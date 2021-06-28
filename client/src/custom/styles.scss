@@ -1,0 +1,141 @@
+@import './animations';
+
+:root {
+   --optional-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+   --first-font: 'JetBrains Mono';
+
+   --max-width: 1400px;
+   --menu-left-width: 20vw;
+   --bg-primary-matrix: rgba(24, 103, 105, 0.253);
+   --bg-nav-matrix: rgba(18, 29, 29, 0.897);
+   --txt-primary-matrix: rgba(13, 198, 201, 0.582);
+   --dt-matrix: rgba(0, 128, 128, 0.466);
+
+   --base-text: 14px;
+
+   @media screen and(min-width: 1370px) {
+      --base-text: 15px;
+   }
+}
+
+::-webkit-scrollbar {
+   height: 10px;
+   width: 10px;
+   background-color: transparent;
+   &-thumb {
+      background-color: grey;
+      border-radius: 5px;
+      transition: all 0.5s ease-in-out;
+      border: 2px solid #000000d0;
+      outline: 2px solid #000000d0;
+   }
+   &-button {
+      background-color: transparent;
+      height: 5px;
+      width: 5px;
+   }
+}
+
+@mixin post-abs($type) {
+   position: absolute;
+   @if $type == 'full' {
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+   }
+   @if $type == 'left' {
+      top: 0;
+      left: 0;
+      bottom: 0;
+   }
+   @if $type == 'right' {
+      top: 0;
+      right: 0;
+      bottom: 0;
+   }
+}
+
+@mixin full__img($image, $type) {
+   background: teal url($image) no-repeat;
+   background-size: cover;
+   @if $type == 'relative' {
+      position: relative;
+   }
+   @if $type == 'absolute' {
+      @include post-abs('full');
+   }
+}
+
+.main-home {
+   position: relative;
+   &::after {
+      content: '';
+      z-index: -1;
+      @include full__img('./assets/img/home1.jpg', 'absolute');
+      filter: brightness(0.2);
+   }
+}
+.playground.main-home {
+   &::after {
+      filter: brightness(0.05);
+   }
+}
+
+.container {
+   max-width: var(--max-width);
+   margin-left: auto;
+   margin-right: auto;
+   padding: 0 1rem;
+   &.is__full__size {
+      min-height: 100vh;
+   }
+   &.abs-center--items {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+   }
+}
+.dt {
+   border: thin solid var(--dt-matrix);
+   border-radius: 3px;
+   &-2-mtx {
+      border-width: 2px;
+   }
+   &-l-r {
+      border-left: thin solid var(--dt-matrix);
+      border-right: thin solid var(--dt-matrix);
+   }
+}
+
+.link {
+   color: teal;
+   background-color: rgba(40, 43, 43, 0.5);
+}
+
+.menu {
+   background-color: var(--bg-nav-matrix);
+   &--top {
+      height: 60px;
+      border: thin solid var(--dt-matrix);
+   }
+   &--left {
+      width: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: width 0.5s ease-in-out, opacity 0.35s ease-out 0.2s;
+      @include post-abs('left');
+      top: 60px;
+      &.is-active {
+         pointer-events: auto;
+         opacity: 1;
+         width: var(--menu-left-width);
+      }
+   }
+}
+
+.matrix--box {
+   background-color: var(--bg-primary-matrix);
+   border: 2px solid var(--dt-matrix);
+   border-radius: 3px;
+}
