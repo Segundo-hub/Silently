@@ -1,2 +1,4 @@
 # Silently
-To each phrase, each minute runs and there is a possibility that it is elimando and it is not known that there was a conversation here
+Every phrase, every word you type, has an expiration date, even your account
+
+## You only feel comfortable talking, and there will be no danger
