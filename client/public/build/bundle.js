@@ -1,5 +1,5 @@
 
-(function(l, r) { if (l.getElementById('livereloadscript')) return; r = l.createElement('script'); r.async = 1; r.src = '//' + (window.location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1'; r.id = 'livereloadscript'; l.getElementsByTagName('head')[0].appendChild(r) })(window.document);
+(function(l, r) { if (!l || l.getElementById('livereloadscript')) return; r = l.createElement('script'); r.async = 1; r.src = '//' + (self.location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1'; r.id = 'livereloadscript'; l.getElementsByTagName('head')[0].appendChild(r) })(self.document);
 var app = (function () {
     'use strict';
 
@@ -77,12 +77,22 @@ var app = (function () {
         }
         return $$scope.dirty;
     }
-    function update_slot(slot, slot_definition, ctx, $$scope, dirty, get_slot_changes_fn, get_slot_context_fn) {
-        const slot_changes = get_slot_changes(slot_definition, $$scope, dirty, get_slot_changes_fn);
+    function update_slot_base(slot, slot_definition, ctx, $$scope, slot_changes, get_slot_context_fn) {
         if (slot_changes) {
             const slot_context = get_slot_context(slot_definition, ctx, $$scope, get_slot_context_fn);
             slot.p(slot_context, slot_changes);
         }
+    }
+    function get_all_dirty_from_scope($$scope) {
+        if ($$scope.ctx.length > 32) {
+            const dirty = [];
+            const length = $$scope.ctx.length / 32;
+            for (let i = 0; i < length; i++) {
+                dirty[i] = -1;
+            }
+            return dirty;
+        }
+        return -1;
     }
     function exclude_internal_props(props) {
         const result = {};
@@ -99,7 +109,6 @@ var app = (function () {
                 rest[k] = props[k];
         return rest;
     }
-
     function append(target, node) {
         target.appendChild(node);
     }
@@ -180,9 +189,9 @@ var app = (function () {
     function toggle_class(element, name, toggle) {
         element.classList[toggle ? 'add' : 'remove'](name);
     }
-    function custom_event(type, detail) {
+    function custom_event(type, detail, bubbles = false) {
         const e = document.createEvent('CustomEvent');
-        e.initCustomEvent(type, false, false, detail);
+        e.initCustomEvent(type, bubbles, false, detail);
         return e;
     }
 
@@ -407,7 +416,7 @@ var app = (function () {
         }
         component.$$.dirty[(i / 31) | 0] |= (1 << (i % 31));
     }
-    function init(component, options, instance, create_fragment, not_equal, props, dirty = [-1]) {
+    function init(component, options, instance, create_fragment, not_equal, props, append_styles, dirty = [-1]) {
         const parent_component = current_component;
         set_current_component(component);
         const $$ = component.$$ = {
@@ -428,8 +437,10 @@ var app = (function () {
             // everything else
             callbacks: blank_object(),
             dirty,
-            skip_bound: false
+            skip_bound: false,
+            root: options.target || parent_component.$$.root
         };
+        append_styles && append_styles($$.root);
         let ready = false;
         $$.ctx = instance
             ? instance(component, options.props || {}, (i, ret, ...rest) => {
@@ -493,7 +504,7 @@ var app = (function () {
     }
 
     function dispatch_dev(type, detail) {
-        document.dispatchEvent(custom_event(type, Object.assign({ version: '3.37.0' }, detail)));
+        document.dispatchEvent(custom_event(type, Object.assign({ version: '3.41.0' }, detail), true));
     }
     function append_dev(target, node) {
         dispatch_dev('SvelteDOMInsert', { target, node });
@@ -588,16 +599,15 @@ var app = (function () {
      */
     function writable(value, start = noop) {
         let stop;
-        const subscribers = [];
+        const subscribers = new Set();
         function set(new_value) {
             if (safe_not_equal(value, new_value)) {
                 value = new_value;
                 if (stop) { // store is ready
                     const run_queue = !subscriber_queue.length;
-                    for (let i = 0; i < subscribers.length; i += 1) {
-                        const s = subscribers[i];
-                        s[1]();
-                        subscriber_queue.push(s, value);
+                    for (const subscriber of subscribers) {
+                        subscriber[1]();
+                        subscriber_queue.push(subscriber, value);
                     }
                     if (run_queue) {
                         for (let i = 0; i < subscriber_queue.length; i += 2) {
@@ -613,17 +623,14 @@ var app = (function () {
         }
         function subscribe(run, invalidate = noop) {
             const subscriber = [run, invalidate];
-            subscribers.push(subscriber);
-            if (subscribers.length === 1) {
+            subscribers.add(subscriber);
+            if (subscribers.size === 1) {
                 stop = start(set) || noop;
             }
             run(value);
             return () => {
-                const index = subscribers.indexOf(subscriber);
-                if (index !== -1) {
-                    subscribers.splice(index, 1);
-                }
-                if (subscribers.length === 0) {
+                subscribers.delete(subscriber);
+                if (subscribers.size === 0) {
                     stop();
                     stop = null;
                 }
@@ -1115,7 +1122,7 @@ var app = (function () {
       );
     }
 
-    /* node_modules\svelte-routing\src\Router.svelte generated by Svelte v3.37.0 */
+    /* node_modules\svelte-routing\src\Router.svelte generated by Svelte v3.41.0 */
 
     function create_fragment$e(ctx) {
     	let current;
@@ -1138,8 +1145,17 @@ var app = (function () {
     		},
     		p: function update(ctx, [dirty]) {
     			if (default_slot) {
-    				if (default_slot.p && dirty & /*$$scope*/ 256) {
-    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[8], dirty, null, null);
+    				if (default_slot.p && (!current || dirty & /*$$scope*/ 256)) {
+    					update_slot_base(
+    						default_slot,
+    						default_slot_template,
+    						ctx,
+    						/*$$scope*/ ctx[8],
+    						!current
+    						? get_all_dirty_from_scope(/*$$scope*/ ctx[8])
+    						: get_slot_changes(default_slot_template, /*$$scope*/ ctx[8], dirty, null),
+    						null
+    					);
     				}
     			}
     		},
@@ -1169,18 +1185,18 @@ var app = (function () {
     }
 
     function instance$e($$self, $$props, $$invalidate) {
-    	let $base;
     	let $location;
     	let $routes;
+    	let $base;
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Router", slots, ['default']);
+    	validate_slots('Router', slots, ['default']);
     	let { basepath = "/" } = $$props;
     	let { url = null } = $$props;
     	const locationContext = getContext(LOCATION);
     	const routerContext = getContext(ROUTER);
     	const routes = writable([]);
-    	validate_store(routes, "routes");
-    	component_subscribe($$self, routes, value => $$invalidate(7, $routes = value));
+    	validate_store(routes, 'routes');
+    	component_subscribe($$self, routes, value => $$invalidate(6, $routes = value));
     	const activeRoute = writable(null);
     	let hasActiveRoute = false; // Used in SSR to synchronously set that a Route is active.
 
@@ -1188,8 +1204,8 @@ var app = (function () {
     	// If the `url` prop is given we force the location to it.
     	const location = locationContext || writable(url ? { pathname: url } : globalHistory.location);
 
-    	validate_store(location, "location");
-    	component_subscribe($$self, location, value => $$invalidate(6, $location = value));
+    	validate_store(location, 'location');
+    	component_subscribe($$self, location, value => $$invalidate(5, $location = value));
 
     	// If routerContext is set, the routerBase of the parent Router
     	// will be the base for this Router's descendants.
@@ -1199,8 +1215,8 @@ var app = (function () {
     	? routerContext.routerBase
     	: writable({ path: basepath, uri: basepath });
 
-    	validate_store(base, "base");
-    	component_subscribe($$self, base, value => $$invalidate(5, $base = value));
+    	validate_store(base, 'base');
+    	component_subscribe($$self, base, value => $$invalidate(7, $base = value));
 
     	const routerBase = derived([base, activeRoute], ([base, activeRoute]) => {
     		// If there is no activeRoute, the routerBase will be identical to the base.
@@ -1283,16 +1299,16 @@ var app = (function () {
     		unregisterRoute
     	});
 
-    	const writable_props = ["basepath", "url"];
+    	const writable_props = ['basepath', 'url'];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<Router> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Router> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$$set = $$props => {
-    		if ("basepath" in $$props) $$invalidate(3, basepath = $$props.basepath);
-    		if ("url" in $$props) $$invalidate(4, url = $$props.url);
-    		if ("$$scope" in $$props) $$invalidate(8, $$scope = $$props.$$scope);
+    		if ('basepath' in $$props) $$invalidate(3, basepath = $$props.basepath);
+    		if ('url' in $$props) $$invalidate(4, url = $$props.url);
+    		if ('$$scope' in $$props) $$invalidate(8, $$scope = $$props.$$scope);
     	};
 
     	$$self.$capture_state = () => ({
@@ -1320,15 +1336,15 @@ var app = (function () {
     		routerBase,
     		registerRoute,
     		unregisterRoute,
-    		$base,
     		$location,
-    		$routes
+    		$routes,
+    		$base
     	});
 
     	$$self.$inject_state = $$props => {
-    		if ("basepath" in $$props) $$invalidate(3, basepath = $$props.basepath);
-    		if ("url" in $$props) $$invalidate(4, url = $$props.url);
-    		if ("hasActiveRoute" in $$props) hasActiveRoute = $$props.hasActiveRoute;
+    		if ('basepath' in $$props) $$invalidate(3, basepath = $$props.basepath);
+    		if ('url' in $$props) $$invalidate(4, url = $$props.url);
+    		if ('hasActiveRoute' in $$props) hasActiveRoute = $$props.hasActiveRoute;
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -1336,7 +1352,7 @@ var app = (function () {
     	}
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*$base*/ 32) {
+    		if ($$self.$$.dirty & /*$base*/ 128) {
     			// This reactive statement will update all the Routes' path when
     			// the basepath changes.
     			{
@@ -1349,7 +1365,7 @@ var app = (function () {
     			}
     		}
 
-    		if ($$self.$$.dirty & /*$routes, $location*/ 192) {
+    		if ($$self.$$.dirty & /*$routes, $location*/ 96) {
     			// This reactive statement will be run when the Router is created
     			// when there are no Routes and then again the following tick, so it
     			// will not find an active Route in SSR and in the browser it will only
@@ -1367,9 +1383,9 @@ var app = (function () {
     		base,
     		basepath,
     		url,
-    		$base,
     		$location,
     		$routes,
+    		$base,
     		$$scope,
     		slots
     	];
@@ -1405,7 +1421,7 @@ var app = (function () {
     	}
     }
 
-    /* node_modules\svelte-routing\src\Route.svelte generated by Svelte v3.37.0 */
+    /* node_modules\svelte-routing\src\Route.svelte generated by Svelte v3.41.0 */
 
     const get_default_slot_changes = dirty => ({
     	params: dirty & /*routeParams*/ 4,
@@ -1516,8 +1532,17 @@ var app = (function () {
     		},
     		p: function update(ctx, dirty) {
     			if (default_slot) {
-    				if (default_slot.p && dirty & /*$$scope, routeParams, $location*/ 532) {
-    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[9], dirty, get_default_slot_changes, get_default_slot_context);
+    				if (default_slot.p && (!current || dirty & /*$$scope, routeParams, $location*/ 532)) {
+    					update_slot_base(
+    						default_slot,
+    						default_slot_template,
+    						ctx,
+    						/*$$scope*/ ctx[9],
+    						!current
+    						? get_all_dirty_from_scope(/*$$scope*/ ctx[9])
+    						: get_slot_changes(default_slot_template, /*$$scope*/ ctx[9], dirty, get_default_slot_changes),
+    						get_default_slot_context
+    					);
     				}
     			}
     		},
@@ -1721,14 +1746,14 @@ var app = (function () {
     	let $activeRoute;
     	let $location;
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Route", slots, ['default']);
+    	validate_slots('Route', slots, ['default']);
     	let { path = "" } = $$props;
     	let { component = null } = $$props;
     	const { registerRoute, unregisterRoute, activeRoute } = getContext(ROUTER);
-    	validate_store(activeRoute, "activeRoute");
+    	validate_store(activeRoute, 'activeRoute');
     	component_subscribe($$self, activeRoute, value => $$invalidate(1, $activeRoute = value));
     	const location = getContext(LOCATION);
-    	validate_store(location, "location");
+    	validate_store(location, 'location');
     	component_subscribe($$self, location, value => $$invalidate(4, $location = value));
 
     	const route = {
@@ -1752,9 +1777,9 @@ var app = (function () {
 
     	$$self.$$set = $$new_props => {
     		$$invalidate(13, $$props = assign(assign({}, $$props), exclude_internal_props($$new_props)));
-    		if ("path" in $$new_props) $$invalidate(8, path = $$new_props.path);
-    		if ("component" in $$new_props) $$invalidate(0, component = $$new_props.component);
-    		if ("$$scope" in $$new_props) $$invalidate(9, $$scope = $$new_props.$$scope);
+    		if ('path' in $$new_props) $$invalidate(8, path = $$new_props.path);
+    		if ('component' in $$new_props) $$invalidate(0, component = $$new_props.component);
+    		if ('$$scope' in $$new_props) $$invalidate(9, $$scope = $$new_props.$$scope);
     	};
 
     	$$self.$capture_state = () => ({
@@ -1777,10 +1802,10 @@ var app = (function () {
 
     	$$self.$inject_state = $$new_props => {
     		$$invalidate(13, $$props = assign(assign({}, $$props), $$new_props));
-    		if ("path" in $$props) $$invalidate(8, path = $$new_props.path);
-    		if ("component" in $$props) $$invalidate(0, component = $$new_props.component);
-    		if ("routeParams" in $$props) $$invalidate(2, routeParams = $$new_props.routeParams);
-    		if ("routeProps" in $$props) $$invalidate(3, routeProps = $$new_props.routeProps);
+    		if ('path' in $$props) $$invalidate(8, path = $$new_props.path);
+    		if ('component' in $$props) $$invalidate(0, component = $$new_props.component);
+    		if ('routeParams' in $$props) $$invalidate(2, routeParams = $$new_props.routeParams);
+    		if ('routeProps' in $$props) $$invalidate(3, routeProps = $$new_props.routeProps);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -1847,7 +1872,7 @@ var app = (function () {
     	}
     }
 
-    /* node_modules\svelte-routing\src\Link.svelte generated by Svelte v3.37.0 */
+    /* node_modules\svelte-routing\src\Link.svelte generated by Svelte v3.41.0 */
     const file$9 = "node_modules\\svelte-routing\\src\\Link.svelte";
 
     function create_fragment$c(ctx) {
@@ -1897,8 +1922,17 @@ var app = (function () {
     		},
     		p: function update(ctx, [dirty]) {
     			if (default_slot) {
-    				if (default_slot.p && dirty & /*$$scope*/ 32768) {
-    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[15], dirty, null, null);
+    				if (default_slot.p && (!current || dirty & /*$$scope*/ 32768)) {
+    					update_slot_base(
+    						default_slot,
+    						default_slot_template,
+    						ctx,
+    						/*$$scope*/ ctx[15],
+    						!current
+    						? get_all_dirty_from_scope(/*$$scope*/ ctx[15])
+    						: get_slot_changes(default_slot_template, /*$$scope*/ ctx[15], dirty, null),
+    						null
+    					);
     				}
     			}
 
@@ -1941,20 +1975,20 @@ var app = (function () {
     	let ariaCurrent;
     	const omit_props_names = ["to","replace","state","getProps"];
     	let $$restProps = compute_rest_props($$props, omit_props_names);
-    	let $base;
     	let $location;
+    	let $base;
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Link", slots, ['default']);
+    	validate_slots('Link', slots, ['default']);
     	let { to = "#" } = $$props;
     	let { replace = false } = $$props;
     	let { state = {} } = $$props;
     	let { getProps = () => ({}) } = $$props;
     	const { base } = getContext(ROUTER);
-    	validate_store(base, "base");
-    	component_subscribe($$self, base, value => $$invalidate(13, $base = value));
+    	validate_store(base, 'base');
+    	component_subscribe($$self, base, value => $$invalidate(14, $base = value));
     	const location = getContext(LOCATION);
-    	validate_store(location, "location");
-    	component_subscribe($$self, location, value => $$invalidate(14, $location = value));
+    	validate_store(location, 'location');
+    	component_subscribe($$self, location, value => $$invalidate(13, $location = value));
     	const dispatch = createEventDispatcher();
     	let href, isPartiallyCurrent, isCurrent, props;
 
@@ -1975,11 +2009,11 @@ var app = (function () {
     	$$self.$$set = $$new_props => {
     		$$props = assign(assign({}, $$props), exclude_internal_props($$new_props));
     		$$invalidate(6, $$restProps = compute_rest_props($$props, omit_props_names));
-    		if ("to" in $$new_props) $$invalidate(7, to = $$new_props.to);
-    		if ("replace" in $$new_props) $$invalidate(8, replace = $$new_props.replace);
-    		if ("state" in $$new_props) $$invalidate(9, state = $$new_props.state);
-    		if ("getProps" in $$new_props) $$invalidate(10, getProps = $$new_props.getProps);
-    		if ("$$scope" in $$new_props) $$invalidate(15, $$scope = $$new_props.$$scope);
+    		if ('to' in $$new_props) $$invalidate(7, to = $$new_props.to);
+    		if ('replace' in $$new_props) $$invalidate(8, replace = $$new_props.replace);
+    		if ('state' in $$new_props) $$invalidate(9, state = $$new_props.state);
+    		if ('getProps' in $$new_props) $$invalidate(10, getProps = $$new_props.getProps);
+    		if ('$$scope' in $$new_props) $$invalidate(15, $$scope = $$new_props.$$scope);
     	};
 
     	$$self.$capture_state = () => ({
@@ -2003,21 +2037,21 @@ var app = (function () {
     		isCurrent,
     		props,
     		onClick,
-    		$base,
+    		ariaCurrent,
     		$location,
-    		ariaCurrent
+    		$base
     	});
 
     	$$self.$inject_state = $$new_props => {
-    		if ("to" in $$props) $$invalidate(7, to = $$new_props.to);
-    		if ("replace" in $$props) $$invalidate(8, replace = $$new_props.replace);
-    		if ("state" in $$props) $$invalidate(9, state = $$new_props.state);
-    		if ("getProps" in $$props) $$invalidate(10, getProps = $$new_props.getProps);
-    		if ("href" in $$props) $$invalidate(0, href = $$new_props.href);
-    		if ("isPartiallyCurrent" in $$props) $$invalidate(11, isPartiallyCurrent = $$new_props.isPartiallyCurrent);
-    		if ("isCurrent" in $$props) $$invalidate(12, isCurrent = $$new_props.isCurrent);
-    		if ("props" in $$props) $$invalidate(1, props = $$new_props.props);
-    		if ("ariaCurrent" in $$props) $$invalidate(2, ariaCurrent = $$new_props.ariaCurrent);
+    		if ('to' in $$props) $$invalidate(7, to = $$new_props.to);
+    		if ('replace' in $$props) $$invalidate(8, replace = $$new_props.replace);
+    		if ('state' in $$props) $$invalidate(9, state = $$new_props.state);
+    		if ('getProps' in $$props) $$invalidate(10, getProps = $$new_props.getProps);
+    		if ('href' in $$props) $$invalidate(0, href = $$new_props.href);
+    		if ('isPartiallyCurrent' in $$props) $$invalidate(11, isPartiallyCurrent = $$new_props.isPartiallyCurrent);
+    		if ('isCurrent' in $$props) $$invalidate(12, isCurrent = $$new_props.isCurrent);
+    		if ('props' in $$props) $$invalidate(1, props = $$new_props.props);
+    		if ('ariaCurrent' in $$props) $$invalidate(2, ariaCurrent = $$new_props.ariaCurrent);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -2025,15 +2059,15 @@ var app = (function () {
     	}
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*to, $base*/ 8320) {
+    		if ($$self.$$.dirty & /*to, $base*/ 16512) {
     			$$invalidate(0, href = to === "/" ? $base.uri : resolve(to, $base.uri));
     		}
 
-    		if ($$self.$$.dirty & /*$location, href*/ 16385) {
+    		if ($$self.$$.dirty & /*$location, href*/ 8193) {
     			$$invalidate(11, isPartiallyCurrent = startsWith($location.pathname, href));
     		}
 
-    		if ($$self.$$.dirty & /*href, $location*/ 16385) {
+    		if ($$self.$$.dirty & /*href, $location*/ 8193) {
     			$$invalidate(12, isCurrent = href === $location.pathname);
     		}
 
@@ -2041,7 +2075,7 @@ var app = (function () {
     			$$invalidate(2, ariaCurrent = isCurrent ? "page" : undefined);
     		}
 
-    		if ($$self.$$.dirty & /*getProps, $location, href, isPartiallyCurrent, isCurrent*/ 23553) {
+    		if ($$self.$$.dirty & /*getProps, $location, href, isPartiallyCurrent, isCurrent*/ 15361) {
     			$$invalidate(1, props = getProps({
     				location: $location,
     				href,
@@ -2065,8 +2099,8 @@ var app = (function () {
     		getProps,
     		isPartiallyCurrent,
     		isCurrent,
-    		$base,
     		$location,
+    		$base,
     		$$scope,
     		slots
     	];
@@ -3620,7 +3654,7 @@ var app = (function () {
 
     const authContext = UserAuth();
 
-    /* client\src\components\widgets\AuthRoute.svelte generated by Svelte v3.37.0 */
+    /* client\src\components\widgets\AuthRoute.svelte generated by Svelte v3.41.0 */
 
     // (7:0) {#if $authContext}
     function create_if_block$1(ctx) {
@@ -3698,8 +3732,17 @@ var app = (function () {
     		},
     		p: function update(ctx, dirty) {
     			if (default_slot) {
-    				if (default_slot.p && dirty & /*$$scope*/ 8) {
-    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[3], dirty, null, null);
+    				if (default_slot.p && (!current || dirty & /*$$scope*/ 8)) {
+    					update_slot_base(
+    						default_slot,
+    						default_slot_template,
+    						ctx,
+    						/*$$scope*/ ctx[3],
+    						!current
+    						? get_all_dirty_from_scope(/*$$scope*/ ctx[3])
+    						: get_slot_changes(default_slot_template, /*$$scope*/ ctx[3], dirty, null),
+    						null
+    					);
     				}
     			}
     		},
@@ -3798,26 +3841,26 @@ var app = (function () {
 
     function instance$b($$self, $$props, $$invalidate) {
     	let $authContext;
-    	validate_store(authContext, "authContext");
+    	validate_store(authContext, 'authContext');
     	component_subscribe($$self, authContext, $$value => $$invalidate(1, $authContext = $$value));
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("AuthRoute", slots, ['default']);
+    	validate_slots('AuthRoute', slots, ['default']);
     	let { path } = $$props;
-    	const writable_props = ["path"];
+    	const writable_props = ['path'];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<AuthRoute> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<AuthRoute> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$$set = $$props => {
-    		if ("path" in $$props) $$invalidate(0, path = $$props.path);
-    		if ("$$scope" in $$props) $$invalidate(3, $$scope = $$props.$$scope);
+    		if ('path' in $$props) $$invalidate(0, path = $$props.path);
+    		if ('$$scope' in $$props) $$invalidate(3, $$scope = $$props.$$scope);
     	};
 
     	$$self.$capture_state = () => ({ Route, path, authContext, $authContext });
 
     	$$self.$inject_state = $$props => {
-    		if ("path" in $$props) $$invalidate(0, path = $$props.path);
+    		if ('path' in $$props) $$invalidate(0, path = $$props.path);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -3842,7 +3885,7 @@ var app = (function () {
     		const { ctx } = this.$$;
     		const props = options.props || {};
 
-    		if (/*path*/ ctx[0] === undefined && !("path" in props)) {
+    		if (/*path*/ ctx[0] === undefined && !('path' in props)) {
     			console.warn("<AuthRoute> was created without expected prop 'path'");
     		}
     	}
@@ -3856,7 +3899,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\custom\logo.svelte generated by Svelte v3.37.0 */
+    /* client\src\custom\logo.svelte generated by Svelte v3.41.0 */
 
     const file$8 = "client\\src\\custom\\logo.svelte";
 
@@ -4012,11 +4055,11 @@ var app = (function () {
 
     function instance$a($$self, $$props) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Logo", slots, []);
+    	validate_slots('Logo', slots, []);
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<Logo> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Logo> was created with unknown prop '${key}'`);
     	});
 
     	return [];
@@ -4036,7 +4079,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\components\WgAuthForm.svelte generated by Svelte v3.37.0 */
+    /* client\src\components\WgAuthForm.svelte generated by Svelte v3.41.0 */
     const file$7 = "client\\src\\components\\WgAuthForm.svelte";
 
     // (28:6) {:else}
@@ -4524,20 +4567,20 @@ var app = (function () {
 
     function instance$9($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("WgAuthForm", slots, []);
+    	validate_slots('WgAuthForm', slots, []);
     	let username, password;
     	let { isAuth = true } = $$props;
 
     	const formSubmit = async () => {
     		const { status } = await getUserAccount({ username, password });
     		authContext.userLogin(status);
-    		status && navigate("/live");
+    		status && navigate('/live');
     	};
 
-    	const writable_props = ["isAuth"];
+    	const writable_props = ['isAuth'];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<WgAuthForm> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<WgAuthForm> was created with unknown prop '${key}'`);
     	});
 
     	function input0_input_handler() {
@@ -4551,7 +4594,7 @@ var app = (function () {
     	}
 
     	$$self.$$set = $$props => {
-    		if ("isAuth" in $$props) $$invalidate(0, isAuth = $$props.isAuth);
+    		if ('isAuth' in $$props) $$invalidate(0, isAuth = $$props.isAuth);
     	};
 
     	$$self.$capture_state = () => ({
@@ -4567,9 +4610,9 @@ var app = (function () {
     	});
 
     	$$self.$inject_state = $$props => {
-    		if ("username" in $$props) $$invalidate(1, username = $$props.username);
-    		if ("password" in $$props) $$invalidate(2, password = $$props.password);
-    		if ("isAuth" in $$props) $$invalidate(0, isAuth = $$props.isAuth);
+    		if ('username' in $$props) $$invalidate(1, username = $$props.username);
+    		if ('password' in $$props) $$invalidate(2, password = $$props.password);
+    		if ('isAuth' in $$props) $$invalidate(0, isAuth = $$props.isAuth);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -4608,7 +4651,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\pages\Home.svelte generated by Svelte v3.37.0 */
+    /* client\src\pages\Home.svelte generated by Svelte v3.41.0 */
     const file$6 = "client\\src\\pages\\Home.svelte";
 
     function create_fragment$8(ctx) {
@@ -4670,18 +4713,18 @@ var app = (function () {
 
     function instance$8($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Home", slots, []);
+    	validate_slots('Home', slots, []);
     	let auth = true;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<Home> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Home> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$capture_state = () => ({ WgAuthForm, auth });
 
     	$$self.$inject_state = $$props => {
-    		if ("auth" in $$props) $$invalidate(0, auth = $$props.auth);
+    		if ('auth' in $$props) $$invalidate(0, auth = $$props.auth);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -4705,7 +4748,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\components\AuthMenu.svelte generated by Svelte v3.37.0 */
+    /* client\src\components\AuthMenu.svelte generated by Svelte v3.41.0 */
 
     const { console: console_1$2 } = globals;
     const file$5 = "client\\src\\components\\AuthMenu.svelte";
@@ -4888,7 +4931,7 @@ var app = (function () {
 
     function instance$7($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("AuthMenu", slots, []);
+    	validate_slots('AuthMenu', slots, []);
     	let { data = {} } = $$props;
     	let active = true;
     	let tabOptions = [];
@@ -4906,30 +4949,30 @@ var app = (function () {
     		localStorage.clear();
     	};
 
-    	const writable_props = ["data"];
+    	const writable_props = ['data'];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console_1$2.warn(`<AuthMenu> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console_1$2.warn(`<AuthMenu> was created with unknown prop '${key}'`);
     	});
 
-    	const click_handler = e => openOptions(e);
+    	const click_handler = e => openOptions(e, 1);
 
     	function div1_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
     			tabOptions[0] = $$value;
     			$$invalidate(2, tabOptions);
     		});
     	}
 
     	function div2_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
     			tabOptions[1] = $$value;
     			$$invalidate(2, tabOptions);
     		});
     	}
 
     	$$self.$$set = $$props => {
-    		if ("data" in $$props) $$invalidate(0, data = $$props.data);
+    		if ('data' in $$props) $$invalidate(0, data = $$props.data);
     	};
 
     	$$self.$capture_state = () => ({
@@ -4943,9 +4986,9 @@ var app = (function () {
     	});
 
     	$$self.$inject_state = $$props => {
-    		if ("data" in $$props) $$invalidate(0, data = $$props.data);
-    		if ("active" in $$props) $$invalidate(1, active = $$props.active);
-    		if ("tabOptions" in $$props) $$invalidate(2, tabOptions = $$props.tabOptions);
+    		if ('data' in $$props) $$invalidate(0, data = $$props.data);
+    		if ('active' in $$props) $$invalidate(1, active = $$props.active);
+    		if ('tabOptions' in $$props) $$invalidate(2, tabOptions = $$props.tabOptions);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -10781,7 +10824,7 @@ var app = (function () {
     })));
     });
 
-    /* client\src\components\widgets\Message.svelte generated by Svelte v3.37.0 */
+    /* client\src\components\widgets\Message.svelte generated by Svelte v3.41.0 */
     const file$4 = "client\\src\\components\\widgets\\Message.svelte";
 
     function create_fragment$6(ctx) {
@@ -10860,27 +10903,27 @@ var app = (function () {
 
     function instance$6($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Message", slots, []);
-    	let { user } = $$props, { message } = $$props, { date } = $$props;
-    	moment.locale("es");
-    	const writable_props = ["user", "message", "date"];
+    	validate_slots('Message', slots, []);
+    	let { user, message, date } = $$props;
+    	moment.locale('es');
+    	const writable_props = ['user', 'message', 'date'];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<Message> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Message> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$$set = $$props => {
-    		if ("user" in $$props) $$invalidate(0, user = $$props.user);
-    		if ("message" in $$props) $$invalidate(1, message = $$props.message);
-    		if ("date" in $$props) $$invalidate(2, date = $$props.date);
+    		if ('user' in $$props) $$invalidate(0, user = $$props.user);
+    		if ('message' in $$props) $$invalidate(1, message = $$props.message);
+    		if ('date' in $$props) $$invalidate(2, date = $$props.date);
     	};
 
     	$$self.$capture_state = () => ({ user, message, date, moment });
 
     	$$self.$inject_state = $$props => {
-    		if ("user" in $$props) $$invalidate(0, user = $$props.user);
-    		if ("message" in $$props) $$invalidate(1, message = $$props.message);
-    		if ("date" in $$props) $$invalidate(2, date = $$props.date);
+    		if ('user' in $$props) $$invalidate(0, user = $$props.user);
+    		if ('message' in $$props) $$invalidate(1, message = $$props.message);
+    		if ('date' in $$props) $$invalidate(2, date = $$props.date);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -10905,15 +10948,15 @@ var app = (function () {
     		const { ctx } = this.$$;
     		const props = options.props || {};
 
-    		if (/*user*/ ctx[0] === undefined && !("user" in props)) {
+    		if (/*user*/ ctx[0] === undefined && !('user' in props)) {
     			console.warn("<Message> was created without expected prop 'user'");
     		}
 
-    		if (/*message*/ ctx[1] === undefined && !("message" in props)) {
+    		if (/*message*/ ctx[1] === undefined && !('message' in props)) {
     			console.warn("<Message> was created without expected prop 'message'");
     		}
 
-    		if (/*date*/ ctx[2] === undefined && !("date" in props)) {
+    		if (/*date*/ ctx[2] === undefined && !('date' in props)) {
     			console.warn("<Message> was created without expected prop 'date'");
     		}
     	}
@@ -10962,7 +11005,7 @@ var app = (function () {
        return data
     };
 
-    /* client\src\components\widgets\SendMessage.svelte generated by Svelte v3.37.0 */
+    /* client\src\components\widgets\SendMessage.svelte generated by Svelte v3.41.0 */
 
     const { console: console_1$1 } = globals;
     const file$3 = "client\\src\\components\\widgets\\SendMessage.svelte";
@@ -11042,18 +11085,18 @@ var app = (function () {
 
     function instance$5($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("SendMessage", slots, []);
+    	validate_slots('SendMessage', slots, []);
     	let message;
 
     	const handleSubmit = async () => {
-    		const data = await sendMessages({ message, title: "Alex Segundo" });
+    		const data = await sendMessages({ message, title: 'Alex Segundo' });
     		console.log(data);
     	};
 
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console_1$1.warn(`<SendMessage> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console_1$1.warn(`<SendMessage> was created with unknown prop '${key}'`);
     	});
 
     	function input_input_handler() {
@@ -11064,7 +11107,7 @@ var app = (function () {
     	$$self.$capture_state = () => ({ sendMessages, message, handleSubmit });
 
     	$$self.$inject_state = $$props => {
-    		if ("message" in $$props) $$invalidate(0, message = $$props.message);
+    		if ('message' in $$props) $$invalidate(0, message = $$props.message);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -11088,7 +11131,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\components\layout\MessageSection.svelte generated by Svelte v3.37.0 */
+    /* client\src\components\layout\MessageSection.svelte generated by Svelte v3.41.0 */
     const file$2 = "client\\src\\components\\layout\\MessageSection.svelte";
 
     function get_each_context(ctx, list, i) {
@@ -11266,14 +11309,14 @@ var app = (function () {
 
     function instance$4($$self, $$props, $$invalidate) {
     	let $messages;
-    	validate_store(messages, "messages");
+    	validate_store(messages, 'messages');
     	component_subscribe($$self, messages, $$value => $$invalidate(0, $messages = $$value));
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("MessageSection", slots, []);
+    	validate_slots('MessageSection', slots, []);
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<MessageSection> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<MessageSection> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$capture_state = () => ({
@@ -11591,6 +11634,8 @@ var app = (function () {
     	function createDebug(namespace) {
     		let prevTime;
     		let enableOverride = null;
+    		let namespacesCache;
+    		let enabledCache;
 
     		function debug(...args) {
     			// Disabled?
@@ -11651,7 +11696,17 @@ var app = (function () {
     		Object.defineProperty(debug, 'enabled', {
     			enumerable: true,
     			configurable: false,
-    			get: () => enableOverride === null ? createDebug.enabled(namespace) : enableOverride,
+    			get: () => {
+    				if (enableOverride !== null) {
+    					return enableOverride;
+    				}
+    				if (namespacesCache !== createDebug.namespaces) {
+    					namespacesCache = createDebug.namespaces;
+    					enabledCache = createDebug.enabled(namespace);
+    				}
+
+    				return enabledCache;
+    			},
     			set: v => {
     				enableOverride = v;
     			}
@@ -11680,6 +11735,7 @@ var app = (function () {
     	*/
     	function enable(namespaces) {
     		createDebug.save(namespaces);
+    		createDebug.namespaces = namespaces;
 
     		createDebug.names = [];
     		createDebug.skips = [];
@@ -12829,6 +12885,8 @@ var app = (function () {
     	function createDebug(namespace) {
     		let prevTime;
     		let enableOverride = null;
+    		let namespacesCache;
+    		let enabledCache;
 
     		function debug(...args) {
     			// Disabled?
@@ -12889,7 +12947,17 @@ var app = (function () {
     		Object.defineProperty(debug, 'enabled', {
     			enumerable: true,
     			configurable: false,
-    			get: () => enableOverride === null ? createDebug.enabled(namespace) : enableOverride,
+    			get: () => {
+    				if (enableOverride !== null) {
+    					return enableOverride;
+    				}
+    				if (namespacesCache !== createDebug.namespaces) {
+    					namespacesCache = createDebug.namespaces;
+    					enabledCache = createDebug.enabled(namespace);
+    				}
+
+    				return enabledCache;
+    			},
     			set: v => {
     				enableOverride = v;
     			}
@@ -12918,6 +12986,7 @@ var app = (function () {
     	*/
     	function enable(namespaces) {
     		createDebug.save(namespaces);
+    		createDebug.namespaces = namespaces;
 
     		createDebug.names = [];
     		createDebug.skips = [];
@@ -13555,15 +13624,13 @@ var app = (function () {
        * @api private
        */
       pause(onPause) {
-        const self = this;
-
         this.readyState = "pausing";
 
-        function pause() {
+        const pause = () => {
           debug$3("paused");
-          self.readyState = "paused";
+          this.readyState = "paused";
           onPause();
-        }
+        };
 
         if (this.polling || !this.writable) {
           let total = 0;
@@ -13608,22 +13675,21 @@ var app = (function () {
        * @api private
        */
       onData(data) {
-        const self = this;
         debug$3("polling got data %s", data);
-        const callback = function(packet, index, total) {
+        const callback = packet => {
           // if its the first message we consider the transport open
-          if ("opening" === self.readyState && packet.type === "open") {
-            self.onOpen();
+          if ("opening" === this.readyState && packet.type === "open") {
+            this.onOpen();
           }
 
           // if its a close packet, we close the ongoing requests
           if ("close" === packet.type) {
-            self.onClose();
+            this.onClose();
             return false;
           }
 
           // otherwise bypass onData and handle the message
-          self.onPacket(packet);
+          this.onPacket(packet);
         };
 
         // decode payload
@@ -13649,12 +13715,10 @@ var app = (function () {
        * @api private
        */
       doClose() {
-        const self = this;
-
-        function close() {
+        const close = () => {
           debug$3("writing close packet");
-          self.write([{ type: "close" }]);
-        }
+          this.write([{ type: "close" }]);
+        };
 
         if ("open" === this.readyState) {
           debug$3("transport open - closing");
@@ -13820,10 +13884,9 @@ var app = (function () {
           method: "POST",
           data: data
         });
-        const self = this;
         req.on("success", fn);
-        req.on("error", function(err) {
-          self.onError("xhr post error", err);
+        req.on("error", err => {
+          this.onError("xhr post error", err);
         });
       }
 
@@ -13835,12 +13898,9 @@ var app = (function () {
       doPoll() {
         debug$2("xhr poll");
         const req = this.request();
-        const self = this;
-        req.on("data", function(data) {
-          self.onData(data);
-        });
-        req.on("error", function(err) {
-          self.onError("xhr poll error", err);
+        req.on("data", this.onData.bind(this));
+        req.on("error", err => {
+          this.onError("xhr poll error", err);
         });
         this.pollXhr = req;
       }
@@ -13888,7 +13948,6 @@ var app = (function () {
         opts.xscheme = !!this.opts.xs;
 
         const xhr = (this.xhr = new xmlhttprequest(opts));
-        const self = this;
 
         try {
           debug$2("xhr open %s: %s", this.method, this.uri);
@@ -13924,22 +13983,22 @@ var app = (function () {
           }
 
           if (this.hasXDR()) {
-            xhr.onload = function() {
-              self.onLoad();
+            xhr.onload = () => {
+              this.onLoad();
             };
-            xhr.onerror = function() {
-              self.onError(xhr.responseText);
+            xhr.onerror = () => {
+              this.onError(xhr.responseText);
             };
           } else {
-            xhr.onreadystatechange = function() {
+            xhr.onreadystatechange = () => {
               if (4 !== xhr.readyState) return;
               if (200 === xhr.status || 1223 === xhr.status) {
-                self.onLoad();
+                this.onLoad();
               } else {
                 // make sure the `error` event handler that's user-set
                 // does not throw in the same tick and gets caught here
-                setTimeout(function() {
-                  self.onError(typeof xhr.status === "number" ? xhr.status : 0);
+                setTimeout(() => {
+                  this.onError(typeof xhr.status === "number" ? xhr.status : 0);
                 }, 0);
               }
             };
@@ -13951,8 +14010,8 @@ var app = (function () {
           // Need to defer since .create() is called directly from the constructor
           // and thus the 'error' event can only be only bound *after* this exception
           // occurs.  Therefore, also, we cannot throw here at all.
-          setTimeout(function() {
-            self.onError(e);
+          setTimeout(() => {
+            this.onError(e);
           }, 0);
           return;
         }
@@ -14115,10 +14174,7 @@ var app = (function () {
         this.index = callbacks.length;
 
         // add callback to jsonp global
-        const self = this;
-        callbacks.push(function(msg) {
-          self.onData(msg);
-        });
+        callbacks.push(this.onData.bind(this));
 
         // append to query string
         this.query.j = this.index;
@@ -14159,7 +14215,6 @@ var app = (function () {
        * @api private
        */
       doPoll() {
-        const self = this;
         const script = document.createElement("script");
 
         if (this.script) {
@@ -14169,8 +14224,8 @@ var app = (function () {
 
         script.async = true;
         script.src = this.uri();
-        script.onerror = function(e) {
-          self.onError("jsonp poll error", e);
+        script.onerror = e => {
+          this.onError("jsonp poll error", e);
         };
 
         const insertAt = document.getElementsByTagName("script")[0];
@@ -14201,7 +14256,6 @@ var app = (function () {
        * @api private
        */
       doWrite(data, fn) {
-        const self = this;
         let iframe;
 
         if (!this.form) {
@@ -14231,30 +14285,30 @@ var app = (function () {
           fn();
         }
 
-        function initIframe() {
-          if (self.iframe) {
+        const initIframe = () => {
+          if (this.iframe) {
             try {
-              self.form.removeChild(self.iframe);
+              this.form.removeChild(this.iframe);
             } catch (e) {
-              self.onError("jsonp polling iframe removal error", e);
+              this.onError("jsonp polling iframe removal error", e);
             }
           }
 
           try {
             // ie6 dynamic iframes with target="" support (thanks Chris Lambacher)
-            const html = '<iframe src="javascript:0" name="' + self.iframeId + '">';
+            const html = '<iframe src="javascript:0" name="' + this.iframeId + '">';
             iframe = document.createElement(html);
           } catch (e) {
             iframe = document.createElement("iframe");
-            iframe.name = self.iframeId;
+            iframe.name = this.iframeId;
             iframe.src = "javascript:0";
           }
 
-          iframe.id = self.iframeId;
+          iframe.id = this.iframeId;
 
-          self.form.appendChild(iframe);
-          self.iframe = iframe;
-        }
+          this.form.appendChild(iframe);
+          this.iframe = iframe;
+        };
 
         initIframe();
 
@@ -14268,8 +14322,8 @@ var app = (function () {
         } catch (e) {}
 
         if (this.iframe.attachEvent) {
-          this.iframe.onreadystatechange = function() {
-            if (self.iframe.readyState === "complete") {
+          this.iframe.onreadystatechange = () => {
+            if (this.iframe.readyState === "complete") {
               complete();
             }
           };
@@ -14281,17 +14335,29 @@ var app = (function () {
 
     var pollingJsonp = JSONPPolling;
 
+    const nextTick$1 = (() => {
+      const isPromiseAvailable =
+        typeof Promise === "function" && typeof Promise.resolve === "function";
+      if (isPromiseAvailable) {
+        return cb => Promise.resolve().then(cb);
+      } else {
+        return cb => setTimeout(cb, 0);
+      }
+    })();
+
     var websocketConstructor_browser = {
       WebSocket: globalThis_browser.WebSocket || globalThis_browser.MozWebSocket,
       usingBrowserWebSocket: true,
-      defaultBinaryType: "arraybuffer"
+      defaultBinaryType: "arraybuffer",
+      nextTick: nextTick$1
     };
 
     const { pick } = util;
     const {
       WebSocket,
       usingBrowserWebSocket,
-      defaultBinaryType
+      defaultBinaryType,
+      nextTick
     } = websocketConstructor_browser;
 
     const debug$1 = browser$1("engine.io-client:websocket");
@@ -14404,63 +14470,54 @@ var app = (function () {
        * @api private
        */
       write(packets) {
-        const self = this;
         this.writable = false;
 
         // encodePacket efficient as it uses WS framing
         // no need for encodePayload
-        let total = packets.length;
-        let i = 0;
-        const l = total;
-        for (; i < l; i++) {
-          (function(packet) {
-            lib$1.encodePacket(packet, self.supportsBinary, function(data) {
-              // always create a new object (GH-437)
-              const opts = {};
-              if (!usingBrowserWebSocket) {
-                if (packet.options) {
-                  opts.compress = packet.options.compress;
-                }
+        for (let i = 0; i < packets.length; i++) {
+          const packet = packets[i];
+          const lastPacket = i === packets.length - 1;
 
-                if (self.opts.perMessageDeflate) {
-                  const len =
-                    "string" === typeof data
-                      ? Buffer.byteLength(data)
-                      : data.length;
-                  if (len < self.opts.perMessageDeflate.threshold) {
-                    opts.compress = false;
-                  }
-                }
+          lib$1.encodePacket(packet, this.supportsBinary, data => {
+            // always create a new object (GH-437)
+            const opts = {};
+            if (!usingBrowserWebSocket) {
+              if (packet.options) {
+                opts.compress = packet.options.compress;
               }
 
-              // Sometimes the websocket has already been closed but the browser didn't
-              // have a chance of informing us about it yet, in that case send will
-              // throw an error
-              try {
-                if (usingBrowserWebSocket) {
-                  // TypeError is thrown when passing the second argument on Safari
-                  self.ws.send(data);
-                } else {
-                  self.ws.send(data, opts);
+              if (this.opts.perMessageDeflate) {
+                const len =
+                  "string" === typeof data ? Buffer.byteLength(data) : data.length;
+                if (len < this.opts.perMessageDeflate.threshold) {
+                  opts.compress = false;
                 }
-              } catch (e) {
-                debug$1("websocket closed before onclose event");
               }
+            }
 
-              --total || done();
-            });
-          })(packets[i]);
-        }
+            // Sometimes the websocket has already been closed but the browser didn't
+            // have a chance of informing us about it yet, in that case send will
+            // throw an error
+            try {
+              if (usingBrowserWebSocket) {
+                // TypeError is thrown when passing the second argument on Safari
+                this.ws.send(data);
+              } else {
+                this.ws.send(data, opts);
+              }
+            } catch (e) {
+              debug$1("websocket closed before onclose event");
+            }
 
-        function done() {
-          self.emit("flush");
-
-          // fake drain
-          // defer to next tick to allow Socket to clear writeBuffer
-          setTimeout(function() {
-            self.writable = true;
-            self.emit("drain");
-          }, 0);
+            if (lastPacket) {
+              // fake drain
+              // defer to next tick to allow Socket to clear writeBuffer
+              nextTick(() => {
+                this.writable = true;
+                this.emit("drain");
+              });
+            }
+          });
         }
       }
 
@@ -14664,7 +14721,8 @@ var app = (function () {
             perMessageDeflate: {
               threshold: 1024
             },
-            transportOptions: {}
+            transportOptions: {},
+            closeOnBeforeunload: true
           },
           opts
         );
@@ -14685,17 +14743,22 @@ var app = (function () {
         this.pingTimeoutTimer = null;
 
         if (typeof addEventListener === "function") {
-          addEventListener(
-            "beforeunload",
-            () => {
-              if (this.transport) {
-                // silently close the transport
-                this.transport.removeAllListeners();
-                this.transport.close();
-              }
-            },
-            false
-          );
+          if (this.opts.closeOnBeforeunload) {
+            // Firefox closes the connection when the "beforeunload" event is emitted but not Chrome. This event listener
+            // ensures every browser behaves the same (no "disconnect" event at the Socket.IO level when the page is
+            // closed/reloaded)
+            addEventListener(
+              "beforeunload",
+              () => {
+                if (this.transport) {
+                  // silently close the transport
+                  this.transport.removeAllListeners();
+                  this.transport.close();
+                }
+              },
+              false
+            );
+          }
           if (this.hostname !== "localhost") {
             this.offlineEventListener = () => {
               this.onClose("transport close");
@@ -14760,9 +14823,8 @@ var app = (function () {
           transport = "websocket";
         } else if (0 === this.transports.length) {
           // Emit error on next tick so it can be listened to
-          const self = this;
-          setTimeout(function() {
-            self.emit("error", "No transports available");
+          setTimeout(() => {
+            this.emit("error", "No transports available");
           }, 0);
           return;
         } else {
@@ -14791,7 +14853,6 @@ var app = (function () {
        */
       setTransport(transport) {
         debug("setting transport %s", transport.name);
-        const self = this;
 
         if (this.transport) {
           debug("clearing existing transport %s", this.transport.name);
@@ -14803,17 +14864,11 @@ var app = (function () {
 
         // set up transport listeners
         transport
-          .on("drain", function() {
-            self.onDrain();
-          })
-          .on("packet", function(packet) {
-            self.onPacket(packet);
-          })
-          .on("error", function(e) {
-            self.onError(e);
-          })
-          .on("close", function() {
-            self.onClose("transport close");
+          .on("drain", this.onDrain.bind(this))
+          .on("packet", this.onPacket.bind(this))
+          .on("error", this.onError.bind(this))
+          .on("close", () => {
+            this.onClose("transport close");
           });
       }
 
@@ -14827,52 +14882,46 @@ var app = (function () {
         debug('probing transport "%s"', name);
         let transport = this.createTransport(name, { probe: 1 });
         let failed = false;
-        const self = this;
 
         Socket.priorWebsocketSuccess = false;
 
-        function onTransportOpen() {
-          if (self.onlyBinaryUpgrades) {
-            const upgradeLosesBinary =
-              !this.supportsBinary && self.transport.supportsBinary;
-            failed = failed || upgradeLosesBinary;
-          }
+        const onTransportOpen = () => {
           if (failed) return;
 
           debug('probe transport "%s" opened', name);
           transport.send([{ type: "ping", data: "probe" }]);
-          transport.once("packet", function(msg) {
+          transport.once("packet", msg => {
             if (failed) return;
             if ("pong" === msg.type && "probe" === msg.data) {
               debug('probe transport "%s" pong', name);
-              self.upgrading = true;
-              self.emit("upgrading", transport);
+              this.upgrading = true;
+              this.emit("upgrading", transport);
               if (!transport) return;
               Socket.priorWebsocketSuccess = "websocket" === transport.name;
 
-              debug('pausing current transport "%s"', self.transport.name);
-              self.transport.pause(function() {
+              debug('pausing current transport "%s"', this.transport.name);
+              this.transport.pause(() => {
                 if (failed) return;
-                if ("closed" === self.readyState) return;
+                if ("closed" === this.readyState) return;
                 debug("changing transport and sending upgrade packet");
 
                 cleanup();
 
-                self.setTransport(transport);
+                this.setTransport(transport);
                 transport.send([{ type: "upgrade" }]);
-                self.emit("upgrade", transport);
+                this.emit("upgrade", transport);
                 transport = null;
-                self.upgrading = false;
-                self.flush();
+                this.upgrading = false;
+                this.flush();
               });
             } else {
               debug('probe transport "%s" failed', name);
               const err = new Error("probe error");
               err.transport = transport.name;
-              self.emit("upgradeError", err);
+              this.emit("upgradeError", err);
             }
           });
-        }
+        };
 
         function freezeTransport() {
           if (failed) return;
@@ -14887,7 +14936,7 @@ var app = (function () {
         }
 
         // Handle any error that happens while probing
-        function onerror(err) {
+        const onerror = err => {
           const error = new Error("probe error: " + err);
           error.transport = transport.name;
 
@@ -14895,8 +14944,8 @@ var app = (function () {
 
           debug('probe transport "%s" failed because of error: %s', name, err);
 
-          self.emit("upgradeError", error);
-        }
+          this.emit("upgradeError", error);
+        };
 
         function onTransportClose() {
           onerror("transport closed");
@@ -14916,13 +14965,13 @@ var app = (function () {
         }
 
         // Remove all listeners on the transport and on self
-        function cleanup() {
+        const cleanup = () => {
           transport.removeListener("open", onTransportOpen);
           transport.removeListener("error", onerror);
           transport.removeListener("close", onTransportClose);
-          self.removeListener("close", onclose);
-          self.removeListener("upgrading", onupgrade);
-        }
+          this.removeListener("close", onclose);
+          this.removeListener("upgrading", onupgrade);
+        };
 
         transport.once("open", onTransportOpen);
         transport.once("error", onerror);
@@ -14988,6 +15037,7 @@ var app = (function () {
             case "ping":
               this.resetPingTimeout();
               this.sendPacket("pong");
+              this.emit("ping");
               this.emit("pong");
               break;
 
@@ -15145,13 +15195,29 @@ var app = (function () {
        * @api private
        */
       close() {
-        const self = this;
+        const close = () => {
+          this.onClose("forced close");
+          debug("socket closing - telling transport to close");
+          this.transport.close();
+        };
+
+        const cleanupAndClose = () => {
+          this.removeListener("upgrade", cleanupAndClose);
+          this.removeListener("upgradeError", cleanupAndClose);
+          close();
+        };
+
+        const waitForUpgrade = () => {
+          // wait for upgrade to finish since we can't send packets while pausing a transport
+          this.once("upgrade", cleanupAndClose);
+          this.once("upgradeError", cleanupAndClose);
+        };
 
         if ("opening" === this.readyState || "open" === this.readyState) {
           this.readyState = "closing";
 
           if (this.writeBuffer.length) {
-            this.once("drain", function() {
+            this.once("drain", () => {
               if (this.upgrading) {
                 waitForUpgrade();
               } else {
@@ -15163,24 +15229,6 @@ var app = (function () {
           } else {
             close();
           }
-        }
-
-        function close() {
-          self.onClose("forced close");
-          debug("socket closing - telling transport to close");
-          self.transport.close();
-        }
-
-        function cleanupAndClose() {
-          self.removeListener("upgrade", cleanupAndClose);
-          self.removeListener("upgradeError", cleanupAndClose);
-          close();
-        }
-
-        function waitForUpgrade() {
-          // wait for upgrade to finish since we can't send packets while pausing a transport
-          self.once("upgrade", cleanupAndClose);
-          self.once("upgradeError", cleanupAndClose);
         }
 
         return this;
@@ -15210,7 +15258,6 @@ var app = (function () {
           "closing" === this.readyState
         ) {
           debug('socket close with reason: "%s"', reason);
-          const self = this;
 
           // clear timers
           clearTimeout(this.pingIntervalTimer);
@@ -15240,8 +15287,8 @@ var app = (function () {
 
           // clean buffers after, so users can still
           // grab the buffers on `close` event
-          self.writeBuffer = [];
-          self.prevBufferLen = 0;
+          this.writeBuffer = [];
+          this.prevBufferLen = 0;
         }
       }
 
@@ -15666,6 +15713,8 @@ var app = (function () {
     	function createDebug(namespace) {
     		let prevTime;
     		let enableOverride = null;
+    		let namespacesCache;
+    		let enabledCache;
 
     		function debug(...args) {
     			// Disabled?
@@ -15726,7 +15775,17 @@ var app = (function () {
     		Object.defineProperty(debug, 'enabled', {
     			enumerable: true,
     			configurable: false,
-    			get: () => enableOverride === null ? createDebug.enabled(namespace) : enableOverride,
+    			get: () => {
+    				if (enableOverride !== null) {
+    					return enableOverride;
+    				}
+    				if (namespacesCache !== createDebug.namespaces) {
+    					namespacesCache = createDebug.namespaces;
+    					enabledCache = createDebug.enabled(namespace);
+    				}
+
+    				return enabledCache;
+    			},
     			set: v => {
     				enableOverride = v;
     			}
@@ -15755,6 +15814,7 @@ var app = (function () {
     	*/
     	function enable(namespaces) {
     		createDebug.save(namespaces);
+    		createDebug.namespaces = namespaces;
 
     		createDebug.names = [];
     		createDebug.skips = [];
@@ -16818,8 +16878,8 @@ var app = (function () {
             this.id = id;
             this.connected = true;
             this.disconnected = false;
-            this.emitReserved("connect");
             this.emitBuffered();
+            this.emitReserved("connect");
         }
         /**
          * Emit buffered events (received and emitted).
@@ -17431,11 +17491,9 @@ var app = (function () {
 
     var build = createCommonjsModule(function (module, exports) {
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.Socket = exports.io = exports.Manager = exports.protocol = void 0;
+    exports.io = exports.Socket = exports.Manager = exports.protocol = void 0;
 
 
-
-    Object.defineProperty(exports, "Socket", { enumerable: true, get: function () { return socket.Socket; } });
     const debug = browser$2("socket.io-client");
     /**
      * Module exports.
@@ -17451,7 +17509,7 @@ var app = (function () {
             uri = undefined;
         }
         opts = opts || {};
-        const parsed = url_1.url(uri, opts.path);
+        const parsed = url_1.url(uri, opts.path || "/socket.io");
         const source = parsed.source;
         const id = parsed.id;
         const path = parsed.path;
@@ -17499,14 +17557,17 @@ var app = (function () {
      */
     var manager_2 = manager;
     Object.defineProperty(exports, "Manager", { enumerable: true, get: function () { return manager_2.Manager; } });
+
+    Object.defineProperty(exports, "Socket", { enumerable: true, get: function () { return socket.Socket; } });
     exports.default = lookup;
     });
 
     var io = /*@__PURE__*/getDefaultExportFromCjs(build);
 
     io.Manager;
+    io.Socket;
 
-    /* client\src\pages\Playground.svelte generated by Svelte v3.37.0 */
+    /* client\src\pages\Playground.svelte generated by Svelte v3.41.0 */
 
     const { console: console_1 } = globals;
     const file$1 = "client\\src\\pages\\Playground.svelte";
@@ -17589,28 +17650,28 @@ var app = (function () {
 
     function instance$3($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Playground", slots, []);
-    	let user = "@marty";
+    	validate_slots('Playground', slots, []);
+    	let user = '@marty';
     	let root;
 
     	onMount(async () => {
-    		const socket = io("localhost:8080");
+    		const socket = io('localhost:8080');
 
-    		socket.on("message", data => {
+    		socket.on('message', data => {
     			console.log(data);
     		});
 
-    		$$invalidate(0, root.parentNode.className = "playground main-home", root);
+    		$$invalidate(0, root.parentNode.className = 'playground main-home', root);
     	});
 
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console_1.warn(`<Playground> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console_1.warn(`<Playground> was created with unknown prop '${key}'`);
     	});
 
     	function main_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
     			root = $$value;
     			$$invalidate(0, root);
     		});
@@ -17627,8 +17688,8 @@ var app = (function () {
     	});
 
     	$$self.$inject_state = $$props => {
-    		if ("user" in $$props) $$invalidate(1, user = $$props.user);
-    		if ("root" in $$props) $$invalidate(0, root = $$props.root);
+    		if ('user' in $$props) $$invalidate(1, user = $$props.user);
+    		if ('root' in $$props) $$invalidate(0, root = $$props.root);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -17652,7 +17713,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\pages\Register.svelte generated by Svelte v3.37.0 */
+    /* client\src\pages\Register.svelte generated by Svelte v3.41.0 */
     const file = "client\\src\\pages\\Register.svelte";
 
     function create_fragment$2(ctx) {
@@ -17714,18 +17775,18 @@ var app = (function () {
 
     function instance$2($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Register", slots, []);
+    	validate_slots('Register', slots, []);
     	let auth = false;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<Register> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Register> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$capture_state = () => ({ WgAuthForm, auth });
 
     	$$self.$inject_state = $$props => {
-    		if ("auth" in $$props) $$invalidate(0, auth = $$props.auth);
+    		if ('auth' in $$props) $$invalidate(0, auth = $$props.auth);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -17749,7 +17810,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\Routes.svelte generated by Svelte v3.37.0 */
+    /* client\src\Routes.svelte generated by Svelte v3.41.0 */
 
     // (10:3) <Route path="/" exact>
     function create_default_slot_5(ctx) {
@@ -18143,11 +18204,11 @@ var app = (function () {
 
     function instance$1($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("Routes", slots, []);
+    	validate_slots('Routes', slots, []);
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<Routes> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Routes> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$capture_state = () => ({
@@ -18176,7 +18237,7 @@ var app = (function () {
     	}
     }
 
-    /* client\src\App.svelte generated by Svelte v3.37.0 */
+    /* client\src\App.svelte generated by Svelte v3.41.0 */
 
     function create_fragment(ctx) {
     	let routes;
@@ -18222,11 +18283,11 @@ var app = (function () {
 
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
-    	validate_slots("App", slots, []);
+    	validate_slots('App', slots, []);
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$capture_state = () => ({ Routes });

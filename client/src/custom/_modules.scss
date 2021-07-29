@@ -1,0 +1,11 @@
+.btn {
+   display: inline-block;
+   padding: 0.5rem;
+   border-radius: 2px;
+   font-weight: normal;
+   &-danger {
+      background-color: #852f0141;
+      border: thin solid #ca4c08;
+      color: #ca4c08;
+   }
+}
