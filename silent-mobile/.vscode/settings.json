@@ -1,0 +1,35 @@
+{
+   "workbench.colorCustomizations": {
+      "activityBar.background": "#1d2427",
+      "activityBar.border": "#324147",
+      "titleBar.activeBackground": "#163738",
+      "titleBar.border": "#324147",
+      "titleBar.activeForeground": "#F5FCF3",
+      "sideBar.background": "#242c30",
+      "sideBar.border": "#324147",
+      "editorIndentGuide.background": "#505050",
+      "editorIndentGuide.activeBackground": "#78909C",
+      "terminal.background": "#242c30",
+      "minimap.background": "#242c30",
+      "editorGroupHeader.tabsBorder": "#324147",
+      "statusBar.background": "#163738"
+   },
+   /* "editor.tokenColorCustomizations": {
+      "comments": "#6b5c53",
+      "functions": "#8abeb7",
+      "keywords": "#b294bb",
+      "variable": "teal"
+   }, */
+   "[xml]": {
+      "breadcrumbs.showEvents": true
+   },
+   "[css]": {
+      "editor.suggest.insertMode": "replace"
+   },
+   "editor.tabSize": 3,
+   "editor.fontFamily": "FiraCode Nerd Font",
+   "editor.formatOnSave": true,
+   "workbench.startupEditor": "welcomePageInEmptyWorkbench",
+   "workbench.iconTheme": "material-icon-theme",
+   "workbench.colorTheme": "One Dark Pro Flat"
+}

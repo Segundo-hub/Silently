@@ -1,0 +1,27 @@
+root = true
+
+[*]
+
+trim_trailing_whitespace = true
+indent_style = tab
+
+[*.js]
+
+tab_width = 3
+indent_size = 3
+
+[*.json]
+
+tab_width = 4
+indent_size = 4
+
+
+[*.svelte]
+
+indent_size = 3
+tab_width = 3
+
+[*.scss]
+
+indent_size = 4
+tab_width = 4
