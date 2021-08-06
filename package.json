@@ -9,9 +9,10 @@
   "workspaces": [
     "silent-app",
     "silent-server",
-	"silent-mobile"
+    "silent-mobile"
   ],
   "devDependencies": {
+    "babel-jest": "^27.0.6",
     "jest": "^27.0.6",
     "supertest": "^6.1.4"
   }
